@@ -1110,6 +1110,15 @@ process_log_line() {
                     apply_killothers "$PKG"
                 fi
 
+                # --- 5e2. CLEAR CACHE ON LAUNCH (game mode) ---
+                if [ -f "$REFRESH_LOCK_DIR/${PKG}.clearcache" ]; then
+                    (
+                        pm clear --cache-only "$PKG" 2>/dev/null \
+                        || rm -rf "/data/data/${PKG}/cache/"* 2>/dev/null
+                        log_msg "🧹 Cache cleared on launch → $PKG"
+                    ) &
+                fi
+
                 # --- 5f. GAMING BATTERY GUARD ---
                 BG_FILE="$REFRESH_LOCK_DIR/${PKG}.batt_guard"
                 if [ -f "$BG_FILE" ] && [ -f "$MOD_DIR/script_runner/battery_guard" ]; then
@@ -1263,6 +1272,14 @@ process_log_line() {
                     NK_FILE="$REFRESH_LOCK_DIR/${DETECTED_PKG}.killothers"
                     if [ -f "$NK_FILE" ]; then
                         apply_killothers "$DETECTED_PKG"
+                    fi
+                    # Clear Cache on Launch for normal apps
+                    if [ -f "$REFRESH_LOCK_DIR/${DETECTED_PKG}.clearcache" ]; then
+                        (
+                            pm clear --cache-only "$DETECTED_PKG" 2>/dev/null \
+                            || rm -rf "/data/data/${DETECTED_PKG}/cache/"* 2>/dev/null
+                            log_msg "🧹 Cache cleared on launch → $DETECTED_PKG"
+                        ) &
                     fi
                     # Per-app saturation for normal apps
                     NORM_SAT_FILE="$REFRESH_LOCK_DIR/${DETECTED_PKG}.sat"

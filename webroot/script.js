@@ -288,16 +288,14 @@ function initFabSettings(){
 
   // Open WebUI in default browser
   menuBrowser?.addEventListener("click", e => {
-    e.stopPropagation();
-    closeAll();
+    e.stopPropagation(); closeAll();
     exec(`am start -a android.intent.action.VIEW -d "http://127.0.0.1:8080" -f 0x10000000 2>/dev/null || am start -a android.intent.action.VIEW -d "http://127.0.0.1:8080" 2>/dev/null`);
     showToast('Opening in browser…', 'WEBUI', 'info', '🌐');
   });
 
   // Hot-refresh: re-apply all settings + restart daemons without reboot
   menuRefresh?.addEventListener("click", async e => {
-    e.stopPropagation();
-    closeAll();
+    e.stopPropagation(); closeAll();
     setStatus('🔄 Refreshing — restarting daemons & re-applying settings…', 'var(--a)');
     showToast('Refresh started — takes ~3s', 'REFRESH', 'info', '🔄');
     const REFRESH_SCRIPT = `${MOD}/script_runner/de_refresh`;
@@ -2531,6 +2529,36 @@ async function openPopup(pkg, gearElement, isGame = false) {
     koBtn.addEventListener('click', koBtn._koHandler);
   }
 
+  // ── Load Clear Cache on Launch state ──
+  const ccBtn   = document.getElementById('popup-clearcache-btn');
+  const ccLabel = document.getElementById('popup-clearcache-label');
+  const ccOnDisk = (await exec(`[ -f ${RR_DIR}/${pkg}.clearcache ] && echo 1 || echo 0`)).trim() === '1';
+  if (ccBtn) {
+    ccBtn.setAttribute('aria-pressed', String(ccOnDisk));
+    ccBtn.classList.toggle('gaming-toggle-btn--on', ccOnDisk);
+    const ccThumb = ccBtn.querySelector('.popup-toggle-thumb');
+    if (ccThumb) ccThumb.style.transform = ccOnDisk ? 'translateX(16px)' : '';
+    if (ccLabel) ccLabel.textContent = ccOnDisk ? 'ON' : 'OFF';
+    if (ccBtn._ccHandler) ccBtn.removeEventListener('click', ccBtn._ccHandler);
+    ccBtn._ccHandler = async () => {
+      const cur = ccBtn.getAttribute('aria-pressed') === 'true';
+      const next = !cur;
+      ccBtn.setAttribute('aria-pressed', String(next));
+      ccBtn.classList.toggle('gaming-toggle-btn--on', next);
+      const t = ccBtn.querySelector('.popup-toggle-thumb');
+      if (t) t.style.transform = next ? 'translateX(16px)' : '';
+      if (ccLabel) ccLabel.textContent = next ? 'ON' : 'OFF';
+      if (next) {
+        await exec(`mkdir -p ${RR_DIR} && touch ${RR_DIR}/${currentPkg}.clearcache`);
+        showToast('Cache will be cleared on every launch', 'CLEAR CACHE', 'info', '🧹');
+      } else {
+        await exec(`rm -f ${RR_DIR}/${currentPkg}.clearcache`);
+        showToast('Auto clear cache disabled', 'CLEAR CACHE', 'info', '🧹');
+      }
+    };
+    ccBtn.addEventListener('click', ccBtn._ccHandler);
+  }
+
   // ── Load Connection on Launch state for popup ──
   const connValRaw = (await exec(`cat ${RR_DIR}/${pkg}.conn 2>/dev/null`)).trim();
   const connOnDisk = ['wifi','data','both'].includes(connValRaw) ? connValRaw : null;
@@ -4381,7 +4409,7 @@ async function _clToggle(pkg, row) {
     await exec(`rm -f ${RR_DIR}/${pkg}.conn`);
     // Remove from configuredPkgs only if no other per-app settings
     const hasOther = (await exec(
-      `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" \\) 2>/dev/null | head -1`
+      `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" -o -name "${pkg}.clearcache" \) 2>/dev/null | head -1`
     )).trim();
     // Also keep in configuredPkgs if the app has encore tweaks enabled
     const hasEncore = encorePkgs.has(pkg);
@@ -4530,7 +4558,7 @@ function initConnLaunchPanel() {
     } else {
       await exec(`rm -f ${RR_DIR}/${pkg}.conn`);
       const hasOther = (await exec(
-        `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" \\) 2>/dev/null | head -1`
+        `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" -o -name "${pkg}.clearcache" \) 2>/dev/null | head -1`
       )).trim();
       if (!hasOther) configuredPkgs.delete(pkg);
       showToast(`Conn OFF — ${_clFriendlyName(pkg)}`, 'CONN LAUNCH', 'info', '○');
