@@ -258,10 +258,8 @@ function initFabSettings(){
   const fabBtn    = document.getElementById("fab-settings-btn");
   const fabMenu   = document.getElementById("fab-menu");
   const fabBubble = document.getElementById("fab-theme-bubble");
-  const menuTheme   = document.getElementById("fab-menu-theme");
-  const menuExit    = document.getElementById("fab-menu-exit");
-  const menuBrowser = document.getElementById("fab-menu-browser");
-  const menuRefresh = document.getElementById("fab-menu-refresh");
+  const menuTheme = document.getElementById("fab-menu-theme");
+  const menuExit  = document.getElementById("fab-menu-exit");
   if(!fabBtn) return;
 
   let menuOpen   = false;
@@ -284,24 +282,6 @@ function initFabSettings(){
     fabMenu.classList.toggle("fab-menu--open", menuOpen);
     fabMenu.setAttribute("aria-hidden", menuOpen ? "false" : "true");
     if(!menuOpen) bubbleOpen = false;
-  });
-
-  // Open WebUI in default browser
-  menuBrowser?.addEventListener("click", e => {
-    e.stopPropagation(); closeAll();
-    exec(`am start -a android.intent.action.VIEW -d "http://127.0.0.1:8080" -f 0x10000000 2>/dev/null || am start -a android.intent.action.VIEW -d "http://127.0.0.1:8080" 2>/dev/null`);
-    showToast('Opening in browser…', 'WEBUI', 'info', '🌐');
-  });
-
-  // Hot-refresh: re-apply all settings + restart daemons without reboot
-  menuRefresh?.addEventListener("click", async e => {
-    e.stopPropagation(); closeAll();
-    setStatus('🔄 Refreshing — restarting daemons & re-applying settings…', 'var(--a)');
-    showToast('Refresh started — takes ~3s', 'REFRESH', 'info', '🔄');
-    const REFRESH_SCRIPT = `${MOD}/script_runner/de_refresh`;
-    await exec(`chmod 755 "${REFRESH_SCRIPT}" 2>/dev/null && sh "${REFRESH_SCRIPT}"`, 15000);
-    setStatus('✔ Refresh complete — all settings re-applied', 'var(--a)');
-    showToast('Done! All settings re-applied, daemons restarted.', 'REFRESH', 'success', '✔');
   });
 
   menuTheme.addEventListener("click", e=>{
@@ -2529,36 +2509,6 @@ async function openPopup(pkg, gearElement, isGame = false) {
     koBtn.addEventListener('click', koBtn._koHandler);
   }
 
-  // ── Load Clear Cache on Launch state ──
-  const ccBtn   = document.getElementById('popup-clearcache-btn');
-  const ccLabel = document.getElementById('popup-clearcache-label');
-  const ccOnDisk = (await exec(`[ -f ${RR_DIR}/${pkg}.clearcache ] && echo 1 || echo 0`)).trim() === '1';
-  if (ccBtn) {
-    ccBtn.setAttribute('aria-pressed', String(ccOnDisk));
-    ccBtn.classList.toggle('gaming-toggle-btn--on', ccOnDisk);
-    const ccThumb = ccBtn.querySelector('.popup-toggle-thumb');
-    if (ccThumb) ccThumb.style.transform = ccOnDisk ? 'translateX(16px)' : '';
-    if (ccLabel) ccLabel.textContent = ccOnDisk ? 'ON' : 'OFF';
-    if (ccBtn._ccHandler) ccBtn.removeEventListener('click', ccBtn._ccHandler);
-    ccBtn._ccHandler = async () => {
-      const cur = ccBtn.getAttribute('aria-pressed') === 'true';
-      const next = !cur;
-      ccBtn.setAttribute('aria-pressed', String(next));
-      ccBtn.classList.toggle('gaming-toggle-btn--on', next);
-      const t = ccBtn.querySelector('.popup-toggle-thumb');
-      if (t) t.style.transform = next ? 'translateX(16px)' : '';
-      if (ccLabel) ccLabel.textContent = next ? 'ON' : 'OFF';
-      if (next) {
-        await exec(`mkdir -p ${RR_DIR} && touch ${RR_DIR}/${currentPkg}.clearcache`);
-        showToast('Cache will be cleared on every launch', 'CLEAR CACHE', 'info', '🧹');
-      } else {
-        await exec(`rm -f ${RR_DIR}/${currentPkg}.clearcache`);
-        showToast('Auto clear cache disabled', 'CLEAR CACHE', 'info', '🧹');
-      }
-    };
-    ccBtn.addEventListener('click', ccBtn._ccHandler);
-  }
-
   // ── Load Connection on Launch state for popup ──
   const connValRaw = (await exec(`cat ${RR_DIR}/${pkg}.conn 2>/dev/null`)).trim();
   const connOnDisk = ['wifi','data','both'].includes(connValRaw) ? connValRaw : null;
@@ -4409,7 +4359,7 @@ async function _clToggle(pkg, row) {
     await exec(`rm -f ${RR_DIR}/${pkg}.conn`);
     // Remove from configuredPkgs only if no other per-app settings
     const hasOther = (await exec(
-      `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" -o -name "${pkg}.clearcache" \) 2>/dev/null | head -1`
+      `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" \\) 2>/dev/null | head -1`
     )).trim();
     // Also keep in configuredPkgs if the app has encore tweaks enabled
     const hasEncore = encorePkgs.has(pkg);
@@ -4558,7 +4508,7 @@ function initConnLaunchPanel() {
     } else {
       await exec(`rm -f ${RR_DIR}/${pkg}.conn`);
       const hasOther = (await exec(
-        `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" -o -name "${pkg}.clearcache" \) 2>/dev/null | head -1`
+        `find ${RR_DIR} -maxdepth 1 \\( -name "${pkg}.mode" -o -name "${pkg}.bright" -o -name "${pkg}.vol" -o -name "${pkg}.killothers" \\) 2>/dev/null | head -1`
       )).trim();
       if (!hasOther) configuredPkgs.delete(pkg);
       showToast(`Conn OFF — ${_clFriendlyName(pkg)}`, 'CONN LAUNCH', 'info', '○');
@@ -4617,76 +4567,77 @@ function initConnLaunchPanel() {
   });
 }
 
-/* ═════════════════════════════════════════════════════════
-   § GAME LIST PANEL · Game Management (Panel 01)
-   Shows all installed user apps. Tap + to add to game_list.txt,
-   tap − to remove. Gear opens per-app config popup.
-   ═════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   § GAME LIST PANEL · Detected Games (Panel 01)
+   ═══════════════════════════════════════════════════════════ */
 
-const GL_FILE = '/sdcard/DAVION_ENGINE/game_list.txt';
-
-let _glPkgs   = [];   // packages in game_list.txt
-let _glAllPkgs = [];  // all user packages
+let _glPkgs   = [];
 let _glQuery  = '';
 let _glLoaded = false;
-let _glTab    = 'games'; // 'games' | 'all'
 
-/* Returns true if pkg is in game_list.txt */
-function _isGame(pkg) { return _glPkgs.includes(pkg); }
-
-async function _glSaveList() {
-  const lines = _glPkgs.join('\n');
-  await exec(`mkdir -p /sdcard/DAVION_ENGINE && printf '%s\n' ${_glPkgs.map(p => `'${p}'`).join(' ')} > ${GL_FILE} 2>/dev/null`);
+/* Returns true if a package is a detected game — used to hide games from panels 4/7/8 */
+function _isGame(pkg) {
+  return _glPkgs.includes(pkg);
 }
 
 async function loadGameListPanel() {
   const list = document.getElementById('gl-app-list');
   if (!list) return;
-  list.innerHTML = '<span class="list-placeholder mono">Loading…</span>';
+  list.innerHTML = '<span class="list-placeholder mono">Detecting games…</span>';
 
-  // Load game_list.txt
-  const glRaw = await exec(`cat "${GL_FILE}" 2>/dev/null`);
-  _glPkgs = glRaw.trim().split('\n').map(p => p.trim()).filter(p => p && p.includes('.'));
+  // Method 1: query packages with GAME category intent (most reliable)
+  const intentRaw = await exec(
+    `cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.GAME 2>/dev/null | grep -v '^No activities' | grep '/' | cut -d'/' -f1 | sort -u`
+  );
+  const intentPkgs = intentRaw.trim().split('\n').filter(Boolean);
 
-  // Load all user-installed apps (same source as App Config panel)
-  if (!_userPkgs.length) {
-    const uRaw = await exec(`pm list packages -3 2>/dev/null | cut -d: -f2 | sort`, 8000);
-    _glAllPkgs = uRaw.trim().split('\n').filter(Boolean);
-  } else {
-    _glAllPkgs = [..._userPkgs];
-  }
+  // Method 2: check app-info category via dumpsys (catches games tagged in manifest)
+  const dumpRaw = await exec(
+    `dumpsys package | grep -B5 'category=0x' | grep 'Package\\[' | sed 's/.*Package\\[//;s/\\].*//' 2>/dev/null | sort -u`
+  );
+  const dumpPkgs = dumpRaw.trim().split('\n').filter(Boolean);
+
+  // Method 3: packages in encore gamelist.json (user-tagged games via Encore Tweaks)
+  const encoreGamePkgs = [...encorePkgs];
+
+  // Merge only reliable sources — NO broad keyword matching
+  const merged = [...new Set([...intentPkgs, ...dumpPkgs, ...encoreGamePkgs])].sort();
+  _glPkgs = merged;
 
   _glLoaded = true;
-  _glRenderTabs();
-  _glRenderList();
+
+  // Update ribbon
+  const ribbonTxt = document.getElementById('gl-ribbon-text');
+  const ribbonIcon = document.getElementById('gl-ribbon-icon');
+  if (ribbonTxt) ribbonTxt.textContent = `${merged.length} game${merged.length !== 1 ? 's' : ''} detected`;
+  if (ribbonIcon) ribbonIcon.textContent = merged.length > 0 ? '🎮' : '○';
+
+  renderGlList();
 }
 
-function _glRenderTabs() {
-  const countG = document.getElementById('gl-count-games');
-  if (countG) countG.textContent = _glPkgs.length;
-}
-
-function _glRenderList() {
+function renderGlList() {
   const list = document.getElementById('gl-app-list');
   if (!list) return;
 
   const q = _glQuery.toLowerCase().trim();
-  // Show only games (apps in _glPkgs) - filter out non-games
-  let pool = _glPkgs;
-
-  let filtered = pool.filter(p =>
+  const filtered = _glPkgs.filter(p =>
     !q || p.toLowerCase().includes(q) || getAppLabel(p).toLowerCase().includes(q)
   );
 
   if (!filtered.length) {
-    list.innerHTML = `<span class="list-placeholder mono">${
-      q ? 'No games match' : 'No games in list'
-    }</span>`;
+    list.innerHTML = `<span class="list-placeholder mono">${q ? 'No games match' : 'No games detected'}</span>`;
     return;
   }
 
+  const hdr = document.createElement('div');
+  hdr.className = 'list-divider';
+  hdr.style.cssText = 'pointer-events:none;cursor:default;border-left:3px solid var(--a);background:rgba(var(--a-rgb),0.05);';
+  hdr.innerHTML = `<span class="divider-text mono" style="color:var(--a);">🎮 DETECTED GAMES (${filtered.length})</span>`;
+
   const frag = document.createDocumentFragment();
+  frag.appendChild(hdr);
   _sortAZ(filtered).forEach(p => frag.appendChild(_buildGlRow(p)));
+
   list.innerHTML = '';
   list.appendChild(frag);
   loadVisibleIcons('gl-app-list');
@@ -4694,11 +4645,10 @@ function _glRenderList() {
 
 function _buildGlRow(pkg) {
   const name = getAppLabel(pkg);
-  const inList = _isGame(pkg);
   const isConfigured = configuredPkgs.has(pkg) || encorePkgs.has(pkg);
 
   const row = document.createElement('div');
-  row.className = 'list-item' + (inList ? ' list-item--rr-on' : '');
+  row.className = 'list-item' + (isConfigured ? ' list-item--rr-on' : '');
   row.dataset.pkg = pkg;
 
   const gearSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -4706,14 +4656,6 @@ function _buildGlRow(pkg) {
   const cfgBadge = isConfigured
     ? `<span class="rr-configured-badge mono" style="background:rgba(var(--a-rgb),0.1);border-color:rgba(var(--a-rgb),0.35);color:var(--a);">CFG</span>`
     : '';
-
-  const toggleBtn = `<button class="clb-step-btn mono gl-toggle-btn" data-glpkg="${pkg}"
-    style="width:32px;height:32px;font-size:18px;border-radius:50%;flex-shrink:0;
-    background:${inList ? 'rgba(var(--a-rgb),0.15)' : 'rgba(0,0,0,0.3)'};
-    border:1.5px solid ${inList ? 'var(--a)' : 'var(--bdr)'};
-    color:${inList ? 'var(--a)' : 'var(--dim)'};
-    display:flex;align-items:center;justify-content:center;"
-    aria-label="${inList ? 'Remove from games' : 'Add to games'}">${inList ? '−' : '+'}</button>`;
 
   row.innerHTML = `
     <div class="item-row">
@@ -4727,7 +4669,6 @@ function _buildGlRow(pkg) {
     </div>
     <div class="btn-row">
       ${cfgBadge}
-      ${toggleBtn}
       <button class="app-gear-btn" data-glgear="${pkg}" aria-label="Configure ${pkg}"
         style="width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,0.35);border:1px solid var(--bdr);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--a);flex-shrink:0;">
         ${gearSvg}
@@ -4741,59 +4682,12 @@ function _buildGlRow(pkg) {
 }
 
 function initGameListPanel() {
-  // + / − toggle
-  document.addEventListener('click', async e => {
-    const btn = e.target.closest('[data-glpkg]');
-    if (!btn) return;
-    e.stopPropagation();
-    const pkg = btn.dataset.glpkg;
-    if (_isGame(pkg)) {
-      _glPkgs = _glPkgs.filter(p => p !== pkg);
-      await exec(`sed -i '/^${pkg}$/d' ${GL_FILE} 2>/dev/null`);
-      showToast(`Removed: ${getAppLabel(pkg)}`, 'GAME LIST', 'info', '🎮');
-    } else {
-      _glPkgs.push(pkg);
-      await exec(`mkdir -p /sdcard/DAVION_ENGINE && echo '${pkg}' >> ${GL_FILE} 2>/dev/null`);
-      showToast(`Added: ${getAppLabel(pkg)}`, 'GAME LIST', 'success', '🎮');
-    }
-    _glRenderTabs();
-    _glRenderList();
-  });
-
-  // Gear click → open per-app config popup
+  // Gear click → open the standard per-app config popup
   document.addEventListener('click', e => {
     const gear = e.target.closest('[data-glgear]');
     if (!gear) return;
     e.stopPropagation();
     openPopup(gear.dataset.glgear, gear, true);
-  });
-
-  // Tab switching
-  // Tab switching - REMOVED (no tabs anymore)
-  /* document.addEventListener('click', e => {
-    const tab = e.target.closest('[data-gltab]');
-    if (!tab) return;
-    _glTab = tab.dataset.gltab;
-    document.querySelectorAll('[data-gltab]').forEach(t => {
-      t.classList.toggle('app-tab--active', t.dataset.gltab === _glTab);
-      t.setAttribute('aria-selected', t.dataset.gltab === _glTab ? 'true' : 'false');
-    });
-    _glRenderList();
-  }); */
-
-  // Search
-  const searchEl = document.getElementById('gl-search');
-  const clearEl  = document.getElementById('gl-search-clear');
-  searchEl?.addEventListener('input', () => {
-    _glQuery = searchEl.value;
-    if (clearEl) clearEl.hidden = !_glQuery;
-    _glRenderList();
-  }, { passive: true });
-  clearEl?.addEventListener('click', () => {
-    _glQuery = '';
-    if (searchEl) searchEl.value = '';
-    clearEl.hidden = true;
-    _glRenderList();
   });
 
   // Lazy-load on first open
@@ -4965,28 +4859,14 @@ async function unlockGpu() {
 function _renderOppTable() {
   const table = document.getElementById('gpu-opp-table');
   if (!table) return;
-
-  // If map is empty or has only 1 valid entry, or _gpuOppMax is 0 → build synthetic table
-  const validEntries = Object.entries(_gpuFreqMap).filter(([, v]) => !isNaN(v) && v > 0);
-  if (validEntries.length <= 1 || _gpuOppMax === 0) {
-    const maxMHz = (validEntries.length > 0 && !isNaN(validEntries[0][1]))
-      ? validEntries[0][1]
-      : 886;
-    const minMHz = Math.round(maxMHz * 0.42);
-    _gpuOppMax = 32;
-    _gpuFreqMap = {};
-    for (let i = 0; i <= 32; i++)
-      _gpuFreqMap[i] = Math.round(maxMHz - (maxMHz - minMHz) * i / 32);
+  if (Object.keys(_gpuFreqMap).length <= 1) {
+    const maxMHz = _gpuFreqMap[0] ?? 886;
+    const minMHz = _gpuFreqMap[_gpuOppMax] ?? Math.round(maxMHz * 0.42);
+    for (let i = 0; i <= _gpuOppMax; i++)
+      _gpuFreqMap[i] = Math.round(maxMHz - (maxMHz - minMHz) * i / _gpuOppMax);
   }
-
-  const entries = Object.entries(_gpuFreqMap)
-    .filter(([, v]) => !isNaN(v) && v > 0)
-    .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-
-  if (!entries.length) {
-    table.innerHTML = '<span class="mono" style="font-size:9px;color:var(--dim);padding:6px;">OPP data unavailable</span>';
-    return;
-  }
+  const entries = Object.entries(_gpuFreqMap).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+  if (!entries.length) { table.innerHTML = '<span class="mono" style="font-size:9px;color:var(--dim);padding:6px;">OPP data unavailable</span>'; return; }
   const maxFreq = Math.max(...entries.map(e => e[1]));
   const minFreq = Math.min(...entries.map(e => e[1]));
   table.innerHTML = entries.map(([idx, freq]) => {

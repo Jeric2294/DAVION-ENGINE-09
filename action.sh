@@ -14,7 +14,7 @@ BB="$MODDIR/busybox"
 WEBUI_URL="http://127.0.0.1:8080"
 
 GITHUB_USER="Jeric2294"
-GITHUB_REPO="DAVION-ENGINE-09"
+GITHUB_REPO="DAVION09-ENGINE"
 BRANCH="main"
 
 MANIFEST_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/manifest.txt"
@@ -27,9 +27,9 @@ ui_print "  DAVION09 ENGINE — Action"
 ui_print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 log "=== ACTION START ==="
 
-# ── STEP 1: ENSURE WEBUI IS RUNNING ─────────────────────────
+# ── STEP 1: OPEN WEBUI IN BROWSER ────────────────────────────
 ui_print ""
-ui_print "⚙ Starting WebUI..."
+ui_print "⚙ Opening WebUI..."
 
 pkill -f "httpd.*8080" 2>/dev/null
 sleep 1
@@ -40,8 +40,16 @@ sleep 1
     >>"$LOG" 2>&1 &
 sleep 1
 
-ui_print "✔ WebUI running → $WEBUI_URL"
-log "WebUI started"
+am start -a android.intent.action.VIEW \
+    -d "$WEBUI_URL" \
+    -f 0x10000000 \
+    >/dev/null 2>&1 \
+|| am start -a android.intent.action.VIEW \
+    -d "$WEBUI_URL" \
+    >/dev/null 2>&1
+
+ui_print "✔ WebUI opened → $WEBUI_URL"
+log "Browser opened: $WEBUI_URL"
 
 # ── STEP 2: CHECK NETWORK ────────────────────────────────────
 ui_print ""

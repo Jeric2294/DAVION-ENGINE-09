@@ -49,16 +49,6 @@
               </button>
               <!-- Dropdown menu -->
               <div class="fab-menu" id="fab-menu" aria-hidden="true">
-                <button class="fab-menu-item" id="fab-menu-browser">
-                  <span class="fab-menu-icon">🌐</span>
-                  <span class="fab-menu-label mono">BROWSER</span>
-                </button>
-                <div class="fab-menu-divider"></div>
-                <button class="fab-menu-item" id="fab-menu-refresh">
-                  <span class="fab-menu-icon">🔄</span>
-                  <span class="fab-menu-label mono">REFRESH</span>
-                </button>
-                <div class="fab-menu-divider"></div>
                 <button class="fab-menu-item" id="fab-menu-theme">
                   <span class="fab-menu-icon">🎨</span>
                   <span class="fab-menu-label mono">THEME</span>
@@ -310,7 +300,7 @@
 
     <!-- ══════════════════════════════════════════════════
          PANEL 01 · GAME LIST
-         ══════════════════════════════════════════════ -->
+         ══════════════════════════════════════════════════ -->
     <section class="nexus-panel" id="game-list-section" data-pnum="01">
       <details class="panel-details">
         <summary class="panel-header panel-summary">
@@ -320,22 +310,12 @@
           <span class="adv-arrow-btn" aria-hidden="true"><svg class="adv-arrow-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><polyline points="7,8 10,12 13,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </summary>
         <div class="panel-body">
-          <!-- Search + tabs -->
+          <!-- Search sticky -->
           <div class="panel-controls-sticky">
-            <div class="search-wrap" style="margin-bottom:6px;">
-              <span class="search-icon mono">⌕</span>
-              <input id="gl-search" class="app-search-input" type="search"
-                placeholder="Search apps…" autocomplete="off" spellcheck="false">
-              <button id="gl-search-clear" class="search-clear" aria-label="Clear" hidden>✕</button>
-            </div>
-            <div style="margin-bottom:6px;padding:8px 12px;background:rgba(var(--a-rgb),0.08);border:1px solid rgba(var(--a-rgb),0.2);border-radius:4px;display:flex;align-items:center;justify-content:space-between;">
-              <span class="mono" style="color:var(--a);font-weight:600;">🎮 GAMES</span>
-              <span class="app-tab-count mono" id="gl-count-games" style="color:var(--a);">0</span>
-            </div>
           </div>
           <!-- App list -->
           <div id="gl-app-list" class="app-list">
-            <span class="list-placeholder mono">Open this panel to load apps</span>
+            <span class="list-placeholder mono">Open this panel to detect games</span>
           </div>
         </div>
       </details>
@@ -1676,20 +1656,6 @@
           <button id="popup-ko-btn" class="gaming-toggle-btn popup-toggle-btn popup-toggle-btn--danger" aria-pressed="false">
             <span class="popup-toggle-track"><span class="popup-toggle-thumb"></span></span>
             <span class="popup-toggle-label mono" id="popup-ko-label">OFF</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Clear Cache On Launch -->
-      <div class="popup-block" id="popup-clearcache-block">
-        <div class="popup-encore-row">
-          <div class="popup-encore-info">
-            <span class="mono popup-block-label">🧹 CLEAR CACHE ON LAUNCH</span>
-            <span class="popup-encore-sub mono">Auto-clear app cache every time this app opens</span>
-          </div>
-          <button id="popup-clearcache-btn" class="gaming-toggle-btn popup-toggle-btn popup-toggle-btn--danger" aria-pressed="false">
-            <span class="popup-toggle-track"><span class="popup-toggle-thumb"></span></span>
-            <span class="popup-toggle-label mono" id="popup-clearcache-label">OFF</span>
           </button>
         </div>
       </div>
