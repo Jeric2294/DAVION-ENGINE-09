@@ -310,7 +310,7 @@
 
     <!-- ══════════════════════════════════════════════════
          PANEL 01 · GAME LIST
-         ══════════════════════════════════════════════════ -->
+         ══════════════════════════════════════════════ -->
     <section class="nexus-panel" id="game-list-section" data-pnum="01">
       <details class="panel-details">
         <summary class="panel-header panel-summary">
@@ -320,12 +320,28 @@
           <span class="adv-arrow-btn" aria-hidden="true"><svg class="adv-arrow-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><polyline points="7,8 10,12 13,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </summary>
         <div class="panel-body">
-          <!-- Search sticky -->
+          <!-- Search + tabs -->
           <div class="panel-controls-sticky">
+            <div class="search-wrap" style="margin-bottom:6px;">
+              <span class="search-icon mono">⌕</span>
+              <input id="gl-search" class="app-search-input" type="search"
+                placeholder="Search apps…" autocomplete="off" spellcheck="false">
+              <button id="gl-search-clear" class="search-clear" aria-label="Clear" hidden>✕</button>
+            </div>
+            <div class="app-tab-bar" role="tablist" style="margin-bottom:6px;">
+              <button class="app-tab app-tab--active" id="gl-tab-games" data-gltab="games" role="tab" aria-selected="true">
+                <span class="mono">🎮 IN LIST</span>
+                <span class="app-tab-count mono" id="gl-count-games">0</span>
+              </button>
+              <button class="app-tab" id="gl-tab-all" data-gltab="all" role="tab" aria-selected="false">
+                <span class="mono">ALL APPS</span>
+                <span class="app-tab-count mono" id="gl-count-all">—</span>
+              </button>
+            </div>
           </div>
           <!-- App list -->
           <div id="gl-app-list" class="app-list">
-            <span class="list-placeholder mono">Open this panel to detect games</span>
+            <span class="list-placeholder mono">Open this panel to load apps</span>
           </div>
         </div>
       </details>
