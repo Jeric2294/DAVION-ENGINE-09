@@ -1115,8 +1115,8 @@ process_log_line() {
                     (
                         rm -rf "/data/data/${PKG}/cache/"*        2>/dev/null
                         rm -rf "/data/user/0/${PKG}/cache/"*      2>/dev/null
-                        pm clear --cache-only "$PKG"              2>/dev/null
-                        log_msg "🧹 Cache cleared on launch → $PKG"
+                        rm -rf "/data/user_de/0/${PKG}/cache/"*   2>/dev/null
+                        log_msg "🧹 Cache cleared → $PKG"
                     ) &
                 fi
 
@@ -1277,10 +1277,10 @@ process_log_line() {
                     # Clear Cache on Launch for normal apps
                     if [ -f "$REFRESH_LOCK_DIR/${DETECTED_PKG}.clearcache" ]; then
                         (
-                            rm -rf "/data/data/${DETECTED_PKG}/cache/"*    2>/dev/null
-                            rm -rf "/data/user/0/${DETECTED_PKG}/cache/"*  2>/dev/null
-                            pm clear --cache-only "$DETECTED_PKG"          2>/dev/null
-                            log_msg "🧹 Cache cleared on launch → $DETECTED_PKG"
+                            rm -rf "/data/data/${DETECTED_PKG}/cache/"*       2>/dev/null
+                            rm -rf "/data/user/0/${DETECTED_PKG}/cache/"*     2>/dev/null
+                            rm -rf "/data/user_de/0/${DETECTED_PKG}/cache/"*  2>/dev/null
+                            log_msg "🧹 Cache cleared → $DETECTED_PKG"
                         ) &
                     fi
                     # Per-app saturation for normal apps

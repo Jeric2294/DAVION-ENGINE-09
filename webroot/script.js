@@ -4635,10 +4635,11 @@ async function loadGameListPanel() {
   if (!list) return;
   list.innerHTML = '<span class="list-placeholder mono">Detecting games…</span>';
 
-  // Method 0: PRIMARY — read from /sdcard/DAVION_ENGINE/game_list.txt (user-managed)
+  // Method 0: PRIMARY — game_list.txt (same file logcat daemon reads)
   const GAME_LIST_FILE = '/sdcard/DAVION_ENGINE/game_list.txt';
   const gameListRaw = await exec(`cat "${GAME_LIST_FILE}" 2>/dev/null`);
-  const gameListPkgs = gameListRaw.trim().split('\n').filter(p => p.trim() && p.includes('.'));
+  const gameListPkgs = gameListRaw.trim().split('\n')
+    .map(p => p.trim()).filter(p => p && p.includes('.'));
 
   // Method 1: query packages with GAME category intent
   const intentRaw = await exec(
@@ -4646,22 +4647,21 @@ async function loadGameListPanel() {
   );
   const intentPkgs = intentRaw.trim().split('\n').filter(Boolean);
 
-  // Method 2: check app-info category via dumpsys
+  // Method 2: dumpsys package category
   const dumpRaw = await exec(
     `dumpsys package | grep -B5 'category=0x' | grep 'Package\\[' | sed 's/.*Package\\[//;s/\\].*//' 2>/dev/null | sort -u`
   );
   const dumpPkgs = dumpRaw.trim().split('\n').filter(Boolean);
 
-  // Method 3: packages in encore gamelist.json
+  // Method 3: encore gamelist.json
   const encoreGamePkgs = [...encorePkgs];
 
-  // Merge all sources — game_list.txt is authoritative
+  // Merge — game_list.txt is always primary
   const merged = [...new Set([...gameListPkgs, ...intentPkgs, ...dumpPkgs, ...encoreGamePkgs])].sort();
   _glPkgs = merged;
 
   _glLoaded = true;
 
-  // Update ribbon
   const ribbonTxt = document.getElementById('gl-ribbon-text');
   const ribbonIcon = document.getElementById('gl-ribbon-icon');
   if (ribbonTxt) ribbonTxt.textContent = `${merged.length} game${merged.length !== 1 ? 's' : ''} detected`;
@@ -4914,14 +4914,28 @@ async function unlockGpu() {
 function _renderOppTable() {
   const table = document.getElementById('gpu-opp-table');
   if (!table) return;
-  if (Object.keys(_gpuFreqMap).length <= 1) {
-    const maxMHz = _gpuFreqMap[0] ?? 886;
-    const minMHz = _gpuFreqMap[_gpuOppMax] ?? Math.round(maxMHz * 0.42);
-    for (let i = 0; i <= _gpuOppMax; i++)
-      _gpuFreqMap[i] = Math.round(maxMHz - (maxMHz - minMHz) * i / _gpuOppMax);
+
+  // If map is empty or has only 1 valid entry, or _gpuOppMax is 0 → build synthetic table
+  const validEntries = Object.entries(_gpuFreqMap).filter(([, v]) => !isNaN(v) && v > 0);
+  if (validEntries.length <= 1 || _gpuOppMax === 0) {
+    const maxMHz = (validEntries.length > 0 && !isNaN(validEntries[0][1]))
+      ? validEntries[0][1]
+      : 886;
+    const minMHz = Math.round(maxMHz * 0.42);
+    _gpuOppMax = 32;
+    _gpuFreqMap = {};
+    for (let i = 0; i <= 32; i++)
+      _gpuFreqMap[i] = Math.round(maxMHz - (maxMHz - minMHz) * i / 32);
   }
-  const entries = Object.entries(_gpuFreqMap).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-  if (!entries.length) { table.innerHTML = '<span class="mono" style="font-size:9px;color:var(--dim);padding:6px;">OPP data unavailable</span>'; return; }
+
+  const entries = Object.entries(_gpuFreqMap)
+    .filter(([, v]) => !isNaN(v) && v > 0)
+    .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+
+  if (!entries.length) {
+    table.innerHTML = '<span class="mono" style="font-size:9px;color:var(--dim);padding:6px;">OPP data unavailable</span>';
+    return;
+  }
   const maxFreq = Math.max(...entries.map(e => e[1]));
   const minFreq = Math.min(...entries.map(e => e[1]));
   table.innerHTML = entries.map(([idx, freq]) => {

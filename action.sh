@@ -27,9 +27,9 @@ ui_print "  DAVION09 ENGINE — Action"
 ui_print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 log "=== ACTION START ==="
 
-# ── STEP 1: OPEN WEBUI IN BROWSER ────────────────────────────
+# ── STEP 1: ENSURE WEBUI IS RUNNING ─────────────────────────
 ui_print ""
-ui_print "⚙ Opening WebUI..."
+ui_print "⚙ Starting WebUI..."
 
 pkill -f "httpd.*8080" 2>/dev/null
 sleep 1
@@ -40,16 +40,8 @@ sleep 1
     >>"$LOG" 2>&1 &
 sleep 1
 
-am start -a android.intent.action.VIEW \
-    -d "$WEBUI_URL" \
-    -f 0x10000000 \
-    >/dev/null 2>&1 \
-|| am start -a android.intent.action.VIEW \
-    -d "$WEBUI_URL" \
-    >/dev/null 2>&1
-
-ui_print "✔ WebUI opened → $WEBUI_URL"
-log "Browser opened: $WEBUI_URL"
+ui_print "✔ WebUI running → $WEBUI_URL"
+log "WebUI started"
 
 # ── STEP 2: CHECK NETWORK ────────────────────────────────────
 ui_print ""
