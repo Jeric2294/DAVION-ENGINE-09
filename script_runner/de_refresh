@@ -1,0 +1,383 @@
+#!/system/bin/sh
+# =============================================================================
+#  DAVION ENGINE — de_refresh
+#  Full hot-refresh: restarts all daemons + re-applies all settings
+#  that do NOT require a reboot.
+#
+#  Skipped (needs reboot): system.prop, kernel modules, SELinux policies,
+#  Magisk/KSU overlays, init.rc services.
+# =============================================================================
+
+MODDIR="/data/adb/modules/GovThermal"
+LOG="/sdcard/GovThermal/GovThermal.log"
+CFG_DIR="/sdcard/GovThermal/config"
+DE_ENGINE="$MODDIR/DAVION_ENGINE/AI_MODE/de_cpu_engine"
+RR_CFG="/sdcard/DAVION_ENGINE/config"
+BB="$MODDIR/busybox"
+
+log() { echo "[$(date '+%H:%M:%S')] [REFRESH] $1" >> "$LOG"; }
+log "======== de_refresh START ========"
+
+# ─────────────────────────────────────────────────────────────
+# 1. PERMISSIONS
+# ─────────────────────────────────────────────────────────────
+chmod 755 "$BB" 2>/dev/null
+chmod 755 "$DE_ENGINE" 2>/dev/null
+find "$MODDIR/script_runner"    -type f -exec chmod 755 {} \; 2>/dev/null
+find "$MODDIR/logcat_detection" -type f -exec chmod 755 {} \; 2>/dev/null
+find "$MODDIR/webroot/cgi-bin"  -type f -exec chmod 755 {} \; 2>/dev/null
+log "Permissions fixed"
+
+# ─────────────────────────────────────────────────────────────
+# 2. WEBUI — kill and restart httpd
+# ─────────────────────────────────────────────────────────────
+pkill -f "busybox.*httpd.*8080" 2>/dev/null
+pkill -f "httpd.*8080"          2>/dev/null
+sleep 0.5
+"$BB" httpd -p 8080 -h "$MODDIR/webroot" -c "$MODDIR/httpd.conf" \
+    >>"$MODDIR/httpd.log" 2>&1 &
+echo $! > "$MODDIR/httpd.pid"
+log "WebUI restarted (PID $!)"
+
+# ─────────────────────────────────────────────────────────────
+# 3. ALL DAEMONS — kill then restart based on saved flags
+# ─────────────────────────────────────────────────────────────
+pkill -f "GovThermal.*logcat"   2>/dev/null
+pkill -f "GovThermal.*dumpsys2" 2>/dev/null
+pkill -f "encore_app_daemon"    2>/dev/null
+pkill -f "idle60_daemon"        2>/dev/null
+pkill -f "otg_daemon"           2>/dev/null
+pkill -f "headset_daemon"       2>/dev/null
+pkill -f "rr_guard"             2>/dev/null
+pkill -f "thermal_watchdog"     2>/dev/null
+sleep 0.5
+log "All daemons killed"
+
+# App detection daemon
+if [ -f "$RR_CFG/enable_logcat" ]; then
+    nohup "$MODDIR/logcat_detection/logcat" >/dev/null 2>&1 &
+    log "Logcat daemon restarted (PID $!)"
+elif [ -f "$RR_CFG/enable_dumpsys" ]; then
+    nohup "$MODDIR/logcat_detection/dumpsys2" >/dev/null 2>&1 &
+    log "Dumpsys2 daemon restarted (PID $!)"
+else
+    nohup "$MODDIR/logcat_detection/logcat" >/dev/null 2>&1 &
+    log "Logcat daemon restarted (default, PID $!)"
+fi
+
+# Encore App Daemon — always on
+nohup sh "$MODDIR/script_runner/encore_app_daemon" >> "$LOG" 2>&1 &
+log "Encore daemon restarted (PID $!)"
+
+# OTG daemon — always on
+nohup sh "$MODDIR/script_runner/otg_daemon" >> "$LOG" 2>&1 &
+log "OTG daemon restarted (PID $!)"
+
+# Thermal watchdog — always on
+nohup sh "$MODDIR/script_runner/thermal_watchdog" >> "$LOG" 2>&1 &
+log "Thermal watchdog restarted (PID $!)"
+
+# Idle 60Hz daemon — only if enabled
+if [ "$(cat "$CFG_DIR/idle60_enabled" 2>/dev/null | tr -d '[:space:]')" = "1" ]; then
+    nohup sh "$MODDIR/script_runner/idle60_daemon" >> "$LOG" 2>&1 &
+    log "Idle60 daemon restarted (PID $!)"
+fi
+
+# Headset daemon — only if any flag set
+if [ -f "$CFG_DIR/headset_vol_on_connect" ] || \
+   [ -f "$CFG_DIR/headset_mute_on_disconnect" ] || \
+   [ -f "$CFG_DIR/headset_restore_on_disconnect" ]; then
+    nohup sh "$MODDIR/script_runner/headset_daemon" >> "$LOG" 2>&1 &
+    log "Headset daemon restarted (PID $!)"
+fi
+
+# RR Guard — only if enabled
+if [ "$(cat "$CFG_DIR/rr_guard_enabled" 2>/dev/null | tr -d '[:space:]')" = "1" ]; then
+    nohup sh "$MODDIR/script_runner/rr_guard" >> "$LOG" 2>&1 &
+    log "RR Guard daemon restarted (PID $!)"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 4. CPU GOVERNOR + SCHEDUTIL
+# ─────────────────────────────────────────────────────────────
+[ -x "$DE_ENGINE" ] && . "$DE_ENGINE" 2>/dev/null
+
+CPU_PROF_KEY=$(tr -d '[:space:]' < "$CFG_DIR/cpu_prof_key"    2>/dev/null)
+SAVED_PROFILE=$(tr -d '[:space:]' < "$CFG_DIR/active_profile" 2>/dev/null)
+[ -z "$SAVED_PROFILE" ] && SAVED_PROFILE="balanced"
+
+_apply_gov() {
+    local pol="$1" gov="$2" up="$3" dn="$4"
+    local base="/sys/devices/system/cpu/cpufreq/policy${pol}"
+    [ -d "$base" ] || return
+    chmod 644 "$base/scaling_governor" 2>/dev/null
+    echo "$gov" > "$base/scaling_governor" 2>/dev/null
+    for gd in "$base/sugov_ext" "$base/schedutil" "$base/schedhorizon" "$base/uag"; do
+        [ -d "$gd" ] || continue
+        [ -f "$gd/up_rate_limit_us"   ] && echo "$up" > "$gd/up_rate_limit_us"   2>/dev/null
+        [ -f "$gd/down_rate_limit_us" ] && echo "$dn" > "$gd/down_rate_limit_us" 2>/dev/null
+        break
+    done
+}
+_avail=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_available_governors 2>/dev/null)
+_pick_gov() { for _g in $1; do echo "$_avail" | grep -qw "$_g" && echo "$_g" && return; done; echo "schedutil"; }
+
+case "$CPU_PROF_KEY" in
+    responsive)
+        G=$(_pick_gov "schedutil sugov_ext schedhorizon uag interactive")
+        _apply_gov 0 "$G" 0 20000; _apply_gov 4 "$G" 0 20000; _apply_gov 7 "$G" 0 20000
+        log "CPU: ULTRA SMOOTH restored" ;;
+    balanced)
+        G=$(_pick_gov "schedutil sugov_ext schedhorizon uag interactive")
+        _apply_gov 0 "$G" 85 10000; _apply_gov 4 "$G" 85 10000; _apply_gov 7 "$G" 85 10000
+        log "CPU: BALANCED restored" ;;
+    latency)
+        _apply_gov 0 "performance" 0 0; _apply_gov 4 "performance" 0 0; _apply_gov 7 "performance" 0 0
+        log "CPU: PERFORMANCE restored" ;;
+    battery)
+        GL=$(_pick_gov "schedutil sugov_ext schedhorizon uag")
+        GB=$(_pick_gov "powersave conservative schedutil")
+        _apply_gov 0 "$GL" 5000 10000; _apply_gov 4 "$GB" 15000 30000; _apply_gov 7 "$GB" 15000 30000
+        log "CPU: BATTERY SAVER restored" ;;
+    *)
+        if [ -f "$DE_ENGINE" ]; then
+            . "$DE_ENGINE" 2>/dev/null
+            case "$SAVED_PROFILE" in
+                performance) de_performance_cpu ;;
+                powersave)   de_powersave_cpu   ;;
+                *)           de_balanced_cpu    ;;
+            esac
+            log "CPU: $SAVED_PROFILE restored (engine)"
+        fi ;;
+esac
+
+# SchedUtil params
+if [ -f "$CFG_DIR/schedutil_params.txt" ]; then
+    SU=$(tr -d '[:space:]' < "$CFG_DIR/schedutil_params.txt")
+    SU_UP=$(echo "$SU" | cut -d, -f1)
+    SU_DN=$(echo "$SU" | cut -d, -f2)
+    SU_HS=$(echo "$SU" | cut -d, -f3)
+    for p in /sys/devices/system/cpu/cpufreq/policy*; do
+        for g in "$p/schedutil" "$p/schedhorizon" "$p/uag"; do
+            [ -d "$g" ] || continue
+            [ -n "$SU_UP" ] && echo "$SU_UP" > "$g/up_rate_limit_us"   2>/dev/null
+            [ -n "$SU_DN" ] && echo "$SU_DN" > "$g/down_rate_limit_us" 2>/dev/null
+            [ -n "$SU_HS" ] && echo "$SU_HS" > "$g/hispeed_load"       2>/dev/null
+            break
+        done
+    done
+    log "SchedUtil restored: up=$SU_UP dn=$SU_DN"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 5. GPU OPP LOCK
+# ─────────────────────────────────────────────────────────────
+GPU_OPP_FILE="$CFG_DIR/gpu_opp_index.txt"
+if [ -f "$GPU_OPP_FILE" ]; then
+    _opp=$(tr -d '\r\n\t ' < "$GPU_OPP_FILE")
+    if [ -n "$_opp" ] && [ "$_opp" -ge 0 ] 2>/dev/null; then
+        [ -f /proc/gpufreqv2/fix_target_opp_index ] && \
+            echo "$_opp" > /proc/gpufreqv2/fix_target_opp_index 2>/dev/null
+        _gfreq=$(awk -v o="$_opp" 'NR==o+1{print $3}' \
+            /proc/gpufreqv2/stack_signed_opp_table 2>/dev/null | cut -d',' -f1)
+        if [ -n "$_gfreq" ] && [ "$_gfreq" -gt 0 ] 2>/dev/null; then
+            chmod 664 /sys/kernel/ged/hal/custom_upbound_gpu_freq 2>/dev/null
+            echo "$_gfreq" > /sys/kernel/ged/hal/custom_upbound_gpu_freq 2>/dev/null
+            chmod 664 /sys/kernel/ged/hal/dcs_mode 2>/dev/null
+            echo 0 > /sys/kernel/ged/hal/dcs_mode 2>/dev/null
+        fi
+        log "GPU OPP $_opp restored"
+    fi
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 6. THERMAL + PYROX + COOL MODE
+# ─────────────────────────────────────────────────────────────
+THERMAL_SCRIPT="$MODDIR/script_runner/thermal_toggle"
+THERMAL_STATE=$(tr -d '[:space:]' < "$CFG_DIR/thermal_state" 2>/dev/null)
+if [ "$THERMAL_STATE" = "disabled" ]; then
+    for svc in thermald vendor.thermal-hal-2-0.mtk vendor.thermal-hal-2-0 \
+               thermal_core thermal_manager thermalloadalgod; do
+        stop "$svc" 2>/dev/null; setprop ctl.stop "$svc" 2>/dev/null
+    done
+    sh "$THERMAL_SCRIPT" disable 2>/dev/null
+    log "Thermal: disabled"
+else
+    sh "$THERMAL_SCRIPT" enable 2>/dev/null
+    log "Thermal: enabled"
+fi
+
+# Pyrox override
+[ "$(tr -d '[:space:]' < "$CFG_DIR/pyrox_state" 2>/dev/null)" = "pyrox_enabled" ] && \
+    sh "$THERMAL_SCRIPT" disable 2>/dev/null && log "Pyrox: re-applied"
+
+# Cool Mode
+[ "$(tr -d '[:space:]' < "$CFG_DIR/cool_mode_state" 2>/dev/null)" = "enabled" ] && \
+    sh "$MODDIR/script_runner/cool_mode" enable 2>/dev/null && log "Cool Mode: re-applied"
+
+# ─────────────────────────────────────────────────────────────
+# 7. SURFACEFLINGER — RR, Saturation, Brightness, SF props
+# ─────────────────────────────────────────────────────────────
+
+# Refresh Rate lock
+UNIVERSAL_RR="$RR_CFG/universal_rr.txt"
+if [ -f "$UNIVERSAL_RR" ]; then
+    MODE_ID=$(tr -d '\r\n\t ' < "$UNIVERSAL_RR")
+    [ -n "$MODE_ID" ] && service call SurfaceFlinger 1035 i32 "$MODE_ID" >/dev/null 2>&1
+    log "RR lock restored: mode $MODE_ID"
+else
+    service call SurfaceFlinger 1035 i32 0 >/dev/null 2>&1
+fi
+
+# Saturation
+SAT_FILE="/sdcard/DAVION_ENGINE_BoostColor/saturation_value"
+[ ! -f "$SAT_FILE" ] && SAT_FILE="$MODDIR/DAVION_ENGINE_BoostColor/saturation_value"
+if [ -f "$SAT_FILE" ]; then
+    SAT_VAL=$(tr -d '\r\n\t ' < "$SAT_FILE")
+    [ -n "$SAT_VAL" ] && service call SurfaceFlinger 1022 f "$SAT_VAL" >/dev/null 2>&1
+    log "Saturation restored: ${SAT_VAL}x"
+fi
+
+# Brightness lock
+BRIGHT_FILE="$RR_CFG/universal_brightness.txt"
+if [ -f "$BRIGHT_FILE" ]; then
+    UB=$(tr -d '\r\n\t ' < "$BRIGHT_FILE")
+    if [ -n "$UB" ] && [ "$UB" -ge 0 ] && [ "$UB" -le 255 ] 2>/dev/null; then
+        settings put system screen_brightness_mode 0 2>/dev/null
+        settings put system screen_brightness "$UB" 2>/dev/null
+        log "Brightness restored: $UB"
+    fi
+fi
+
+# SF illusion + phase offsets (resetprop works at runtime)
+resetprop debug.sf.frame_rate_multiple_threshold 120 2>/dev/null
+resetprop debug.sf.use_phase_offsets_as_durations 0 2>/dev/null
+setprop debug.sf.early_phase_offset_ns              1500000
+setprop debug.sf.early_app_phase_offset_ns          1500000
+setprop debug.sf.early_gl_phase_offset_ns           3000000
+setprop debug.sf.early_gl_app_phase_offset_ns      15000000
+setprop debug.sf.high_fps_early_app_phase_offset_ns -4000000
+setprop debug.sf.high_fps_late_app_phase_offset_ns   1000000
+setprop debug.sf.high_fps_early_sf_phase_offset_ns  -4000000
+setprop debug.sf.high_fps_late_sf_phase_offset_ns    1000000
+setprop debug.sf.enable_advanced_sf_phase_offset 1
+setprop vendor.debug.sf.latch_unsignaled 1
+setprop debug.sf.latch_unsignaled        1
+setprop debug.sf.auto_latch_unsignaled   1
+setprop debug.sf.disable_backpressure             1
+setprop debug.sf.enable_gl_backpressure           0
+setprop debug.sf.disable_client_composition_cache 1
+setprop debug.sf.enable_hwc_vds                   1
+setprop debug.renderengine.backend skiaglthreaded
+setprop debug.hwui.renderer         skiagl
+log "SF props re-applied"
+
+# Zeta max Hz
+ZETA_MAX=$(cmd display dump 2>/dev/null | grep -Eo 'fps=[0-9.]+' | cut -f2 -d= | sort -nr | head -1 | cut -d. -f1)
+if [ -n "$ZETA_MAX" ] && [ "$ZETA_MAX" -gt 60 ] 2>/dev/null; then
+    settings put system peak_refresh_rate "$ZETA_MAX" 2>/dev/null
+    settings put system min_refresh_rate  "$ZETA_MAX" 2>/dev/null
+    log "Zeta max Hz: ${ZETA_MAX}Hz"
+fi
+
+# FPSGO
+[ -f /sys/kernel/fpsgo/common/force_onoff ] && echo 1 > /sys/kernel/fpsgo/common/force_onoff 2>/dev/null
+[ -f /sys/kernel/fpsgo/fbt/boost_ta ]       && echo 0 > /sys/kernel/fpsgo/fbt/boost_ta       2>/dev/null
+log "FPSGO tuned"
+
+# ─────────────────────────────────────────────────────────────
+# 8. FEATURE TOGGLES
+# ─────────────────────────────────────────────────────────────
+if [ -f "$CFG_DIR/feat_frame_stability" ]; then
+    resetprop ro.surface_flinger.set_touch_timer_ms 3000 2>/dev/null
+    resetprop ro.surface_flinger.set_idle_timer_ms  3000 2>/dev/null
+    resetprop ro.surface_flinger.enable_frame_rate_override true 2>/dev/null
+    settings put system peak_refresh_rate 120.0 2>/dev/null
+    settings put system min_refresh_rate   90.0 2>/dev/null
+    log "Feature: Frame Stability re-applied"
+fi
+
+if [ -f "$CFG_DIR/feat_anti_throttle" ]; then
+    setprop vendor.powerhal.dfs.enable 0
+    setprop vendor.powerhal.init 0
+    for pol in /sys/devices/system/cpu/cpufreq/policy*/scaling_min_freq; do
+        echo 1200000 > "$pol" 2>/dev/null
+    done
+    for gf in /sys/class/devfreq/gpufreq/min_freq \
+              /sys/devices/platform/*/mali*/devfreq/*/min_freq; do
+        echo 400000000 > "$gf" 2>/dev/null
+    done
+    setprop debug.mali.force_profiling 0
+    setprop debug.hwui.target_cpu_time_percent 50
+    log "Feature: Anti-Throttle re-applied"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 9. RESETPROPS
+# ─────────────────────────────────────────────────────────────
+if [ "$(tr -d '[:space:]' < "$CFG_DIR/removelimit_state" 2>/dev/null)" = "applied" ]; then
+    resetprop persist.sys.apm.screen_record               120 2>/dev/null
+    resetprop persist.sys.apm.float_window                120 2>/dev/null
+    resetprop persist.sys.apm.split_screen                120 2>/dev/null
+    resetprop persist.sys.apm.default_refresh_rate        120 2>/dev/null
+    resetprop persist.sys.apm.force_high_refresh_rate       1 2>/dev/null
+    resetprop persist.sys.apm.video_switch                  0 2>/dev/null
+    resetprop debug.graphics.disable_default_fps_limit      1 2>/dev/null
+    resetprop persist.vendor.display.screen_record_fps    120 2>/dev/null
+    log "Remove Limit: re-applied"
+fi
+
+if [ "$(tr -d '[:space:]' < "$CFG_DIR/animation_state" 2>/dev/null)" = "applied" ]; then
+    resetprop ro.hios.ui.blur_disable                  1 2>/dev/null
+    resetprop ro.surface_flinger.supports_background_blur 0 2>/dev/null
+    resetprop ro.tran.open_close_animation             3 2>/dev/null
+    resetprop ro.hios.transition_animation             3 2>/dev/null
+    resetprop ro.transsion_remote_anim_support         0 2>/dev/null
+    resetprop ro.hios.animation.open_close             1 2>/dev/null
+    resetprop ro.hios.animation.launch                 1 2>/dev/null
+    resetprop ro.hios.animation.exit                   1 2>/dev/null
+    resetprop ro.hios.animation.unlock                 1 2>/dev/null
+    resetprop persist.sys.ui.hw                        1 2>/dev/null
+    resetprop debug.sf.disable_backpressure            1 2>/dev/null
+    settings put global disable_window_blurs           1 2>/dev/null
+    log "Animation Fix: re-applied"
+fi
+
+# Animation scales
+ANIM_CFG="/sdcard/DAVION_ENGINE_AnimScale"
+for KEY in window_animation_scale transition_animation_scale animator_duration_scale; do
+    if [ -f "$ANIM_CFG/$KEY" ]; then
+        VAL=$(tr -d '[:space:]' < "$ANIM_CFG/$KEY")
+        [ -n "$VAL" ] && settings put global "$KEY" "$VAL" 2>/dev/null
+    else
+        settings put global "$KEY" "0.5" 2>/dev/null
+    fi
+done
+log "Animation scales restored"
+
+# ─────────────────────────────────────────────────────────────
+# 10. BOOT_APPLY.SH
+# ─────────────────────────────────────────────────────────────
+BOOT_APPLY="$CFG_DIR/boot_apply.sh"
+[ ! -f "$BOOT_APPLY" ] && BOOT_APPLY="$MODDIR/config/boot_apply.sh"
+if [ -f "$BOOT_APPLY" ]; then
+    chmod 755 "$BOOT_APPLY" 2>/dev/null
+    sh "$BOOT_APPLY" 2>/dev/null
+    log "boot_apply.sh executed"
+fi
+
+# ─────────────────────────────────────────────────────────────
+# 11. FAST CHARGE
+# ─────────────────────────────────────────────────────────────
+if [ "$(tr -d '[:space:]' < "$CFG_DIR/flash_charge_enabled" 2>/dev/null)" = "1" ]; then
+    echo "stop 1" > /proc/mtk_batoc_throttling/battery_oc_protect_stop 2>/dev/null
+    echo "0 0"    > /proc/mtk_battery_cmd/current_cmd 2>/dev/null
+    for n in /sys/class/power_supply/battery/enable_hv_charging \
+             /sys/class/mtk_charger/fast_charging_indicator; do
+        [ -f "$n" ] && echo 1 > "$n" 2>/dev/null
+    done
+    log "Fast Charge: re-applied"
+fi
+
+log "======== de_refresh DONE ========"
+exit 0

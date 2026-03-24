@@ -14,7 +14,7 @@ BB="$MODDIR/busybox"
 WEBUI_URL="http://127.0.0.1:8080"
 
 GITHUB_USER="Jeric2294"
-GITHUB_REPO="DAVION09-ENGINE"
+GITHUB_REPO="DAVION-ENGINE-09"
 BRANCH="main"
 
 MANIFEST_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/manifest.txt"

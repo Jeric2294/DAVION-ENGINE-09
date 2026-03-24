@@ -49,6 +49,16 @@
               </button>
               <!-- Dropdown menu -->
               <div class="fab-menu" id="fab-menu" aria-hidden="true">
+                <button class="fab-menu-item" id="fab-menu-browser">
+                  <span class="fab-menu-icon">🌐</span>
+                  <span class="fab-menu-label mono">BROWSER</span>
+                </button>
+                <div class="fab-menu-divider"></div>
+                <button class="fab-menu-item" id="fab-menu-refresh">
+                  <span class="fab-menu-icon">🔄</span>
+                  <span class="fab-menu-label mono">REFRESH</span>
+                </button>
+                <div class="fab-menu-divider"></div>
                 <button class="fab-menu-item" id="fab-menu-theme">
                   <span class="fab-menu-icon">🎨</span>
                   <span class="fab-menu-label mono">THEME</span>
@@ -495,6 +505,24 @@
         <div style="display:flex;gap:8px;margin-top:12px;">
           <button id="btn-apply-gpu" class="nexus-btn nexus-btn--full">⚡ APPLY GPU LOCK ›</button>
           <button id="btn-unlock-gpu" class="nexus-btn" style="flex-shrink:0;padding:7px 14px;opacity:0.7;">UNLOCK</button>
+        </div>
+
+        <!-- OPP Table -->
+        <details style="margin-top:14px;">
+          <summary style="display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;padding:4px 0;" class="mono">
+            <span style="font-size:9px;letter-spacing:0.16em;color:var(--dim);flex:1;">OPP TABLE — TAP TO SELECT</span>
+            <span class="adv-arrow-btn" aria-hidden="true"><svg class="adv-arrow-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><polyline points="7,8 10,12 13,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </summary>
+          <div id="gpu-opp-table" style="display:flex;flex-direction:column;gap:3px;max-height:180px;overflow-y:auto;margin-top:8px;"></div>
+        </details>
+
+        <!-- Frequency History Graph -->
+        <div style="margin-top:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <span class="mono" style="font-size:9px;letter-spacing:0.16em;color:var(--dim);">FREQ HISTORY · 30s</span>
+            <span class="mono" id="gpu-graph-peak" style="font-size:9px;color:var(--dim);"></span>
+          </div>
+          <canvas id="gpu-freq-graph" height="52" style="width:100%;border-radius:6px;background:rgba(var(--a-rgb),0.04);border:0.5px solid rgba(var(--a-rgb),0.12);display:block;"></canvas>
         </div>
 
       </div>
@@ -1258,8 +1286,8 @@
           </div>
 
           <!-- ── TOGGLE 1: FRAME STABILITY ────────────────────────── -->
-          <details class="adv-details conn-bubble" style="flex-direction:column;align-items:stretch;padding:0;" open>
-            <summary class="adv-summary" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;list-style:none;-webkit-tap-highlight-color:transparent;">
+          <details class="adv-details conn-bubble" id="feat-frame-sub" style="flex-direction:column;align-items:stretch;padding:0;" open>
+            <summary class="adv-summary">
               <div style="display:flex;align-items:center;gap:10px;min-width:0;">
                 <span style="font-size:18px;flex-shrink:0;">🎯</span>
                 <div style="min-width:0;">
@@ -1268,11 +1296,10 @@
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                <button id="feat-frame-toggle" class="gaming-toggle-btn" aria-pressed="false" onclick="event.stopPropagation()" style="flex-shrink:0;">
+                <button id="feat-frame-toggle" class="gaming-toggle-btn popup-toggle-btn--danger" aria-pressed="false" onclick="event.stopPropagation()" style="flex-shrink:0;">
                   <span class="popup-toggle-track"><span class="popup-toggle-thumb"></span></span>
                   <span class="gaming-toggle-label mono" id="feat-frame-label">OFF</span>
                 </button>
-                <span class="adv-arrow-btn" aria-hidden="true"><svg class="adv-arrow-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><polyline points="7,8 10,12 13,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               </div>
             </summary>
             <div class="feat-detail-list" id="feat-frame-details" style="border-top:1px solid var(--bdr);padding:10px 14px 14px;display:flex;flex-direction:column;gap:5px;">
@@ -1304,8 +1331,8 @@
           </details><!-- /frame stability panel -->
 
           <!-- ── TOGGLE 2: ANTI-THROTTLE BOOST ──────────────────── -->
-          <details class="adv-details conn-bubble" style="flex-direction:column;align-items:stretch;padding:0;" open>
-            <summary class="adv-summary" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;list-style:none;-webkit-tap-highlight-color:transparent;">
+          <details class="adv-details conn-bubble" id="feat-throttle-sub" style="flex-direction:column;align-items:stretch;padding:0;" open>
+            <summary class="adv-summary">
               <div style="display:flex;align-items:center;gap:10px;min-width:0;">
                 <span style="font-size:18px;flex-shrink:0;">🔥</span>
                 <div style="min-width:0;">
@@ -1314,11 +1341,10 @@
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                <button id="feat-throttle-toggle" class="gaming-toggle-btn" aria-pressed="false" onclick="event.stopPropagation()" style="flex-shrink:0;">
+                <button id="feat-throttle-toggle" class="gaming-toggle-btn popup-toggle-btn--danger" aria-pressed="false" onclick="event.stopPropagation()" style="flex-shrink:0;">
                   <span class="popup-toggle-track"><span class="popup-toggle-thumb"></span></span>
                   <span class="gaming-toggle-label mono" id="feat-throttle-label">OFF</span>
                 </button>
-                <span class="adv-arrow-btn" aria-hidden="true"><svg class="adv-arrow-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="9" stroke="currentColor" stroke-width="1.5"/><polyline points="7,8 10,12 13,8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               </div>
             </summary>
             <div style="border-top:1px solid var(--bdr);padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px;">
@@ -1350,10 +1376,9 @@
             </div>
           </details><!-- /anti-throttle panel -->
 
-
           <!-- ── TOGGLE 3: PYROX THERMAL ────────────────────────────── -->
           <details class="adv-details conn-bubble" id="feat-pyrox-sub" style="flex-direction:column;align-items:stretch;padding:0;">
-            <summary class="adv-summary" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;list-style:none;-webkit-tap-highlight-color:transparent;">
+            <summary class="adv-summary">
               <div style="display:flex;align-items:center;gap:10px;min-width:0;">
                 <span style="font-size:18px;flex-shrink:0;">🔥</span>
                 <div style="min-width:0;">
@@ -1387,10 +1412,9 @@
             </div>
           </details><!-- /pyrox thermal -->
 
-
           <!-- ── TOGGLE 5: COOL MODE ───────────────────────────────── -->
           <details class="adv-details conn-bubble" id="feat-cool-sub" style="flex-direction:column;align-items:stretch;padding:0;">
-            <summary class="adv-summary" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;list-style:none;-webkit-tap-highlight-color:transparent;">
+            <summary class="adv-summary">
               <div style="display:flex;align-items:center;gap:10px;min-width:0;">
                 <span style="font-size:18px;flex-shrink:0;">❄️</span>
                 <div style="min-width:0;">
@@ -1427,8 +1451,6 @@
               </div>
             </div>
           </details><!-- /cool mode -->
-
-        </div>
       </details>
     </section>
 
