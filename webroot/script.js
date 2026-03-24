@@ -4663,9 +4663,7 @@ async function loadGameListPanel() {
 
 function _glRenderTabs() {
   const countG = document.getElementById('gl-count-games');
-  const countA = document.getElementById('gl-count-all');
   if (countG) countG.textContent = _glPkgs.length;
-  if (countA) countA.textContent = _glAllPkgs.length || '—';
 }
 
 function _glRenderList() {
@@ -4673,7 +4671,8 @@ function _glRenderList() {
   if (!list) return;
 
   const q = _glQuery.toLowerCase().trim();
-  let pool = _glTab === 'games' ? _glPkgs : _glAllPkgs;
+  // Show only games (apps in _glPkgs) - filter out non-games
+  let pool = _glPkgs;
 
   let filtered = pool.filter(p =>
     !q || p.toLowerCase().includes(q) || getAppLabel(p).toLowerCase().includes(q)
@@ -4681,9 +4680,7 @@ function _glRenderList() {
 
   if (!filtered.length) {
     list.innerHTML = `<span class="list-placeholder mono">${
-      _glTab === 'games'
-        ? (q ? 'No games match' : 'No games yet — tap ALL APPS to add')
-        : (q ? 'No apps match' : 'No apps found')
+      q ? 'No games match' : 'No games in list'
     }</span>`;
     return;
   }
@@ -4772,7 +4769,8 @@ function initGameListPanel() {
   });
 
   // Tab switching
-  document.addEventListener('click', e => {
+  // Tab switching - REMOVED (no tabs anymore)
+  /* document.addEventListener('click', e => {
     const tab = e.target.closest('[data-gltab]');
     if (!tab) return;
     _glTab = tab.dataset.gltab;
@@ -4781,7 +4779,7 @@ function initGameListPanel() {
       t.setAttribute('aria-selected', t.dataset.gltab === _glTab ? 'true' : 'false');
     });
     _glRenderList();
-  });
+  }); */
 
   // Search
   const searchEl = document.getElementById('gl-search');
