@@ -4635,23 +4635,28 @@ async function loadGameListPanel() {
   if (!list) return;
   list.innerHTML = '<span class="list-placeholder mono">Detecting games…</span>';
 
-  // Method 1: query packages with GAME category intent (most reliable)
+  // Method 0: PRIMARY — read from /sdcard/DAVION_ENGINE/game_list.txt (user-managed)
+  const GAME_LIST_FILE = '/sdcard/DAVION_ENGINE/game_list.txt';
+  const gameListRaw = await exec(`cat "${GAME_LIST_FILE}" 2>/dev/null`);
+  const gameListPkgs = gameListRaw.trim().split('\n').filter(p => p.trim() && p.includes('.'));
+
+  // Method 1: query packages with GAME category intent
   const intentRaw = await exec(
     `cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.GAME 2>/dev/null | grep -v '^No activities' | grep '/' | cut -d'/' -f1 | sort -u`
   );
   const intentPkgs = intentRaw.trim().split('\n').filter(Boolean);
 
-  // Method 2: check app-info category via dumpsys (catches games tagged in manifest)
+  // Method 2: check app-info category via dumpsys
   const dumpRaw = await exec(
     `dumpsys package | grep -B5 'category=0x' | grep 'Package\\[' | sed 's/.*Package\\[//;s/\\].*//' 2>/dev/null | sort -u`
   );
   const dumpPkgs = dumpRaw.trim().split('\n').filter(Boolean);
 
-  // Method 3: packages in encore gamelist.json (user-tagged games via Encore Tweaks)
+  // Method 3: packages in encore gamelist.json
   const encoreGamePkgs = [...encorePkgs];
 
-  // Merge only reliable sources — NO broad keyword matching
-  const merged = [...new Set([...intentPkgs, ...dumpPkgs, ...encoreGamePkgs])].sort();
+  // Merge all sources — game_list.txt is authoritative
+  const merged = [...new Set([...gameListPkgs, ...intentPkgs, ...dumpPkgs, ...encoreGamePkgs])].sort();
   _glPkgs = merged;
 
   _glLoaded = true;
